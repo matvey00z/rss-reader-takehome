@@ -1,0 +1,54 @@
+version: "3.8"
+
+services:
+  db:
+    container_name: postgres
+    image: "postgres:latest"
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=rss_db
+      - POSTGRES_USER=test_user
+      - POSTGRES_PASSWORD=test_password
+
+  mq:
+    container_name: rabbitmq
+    image: "rabbitmq:latest"
+    restart: unless-stopped
+
+  dramatiq:
+    build: rss_service/
+    restart: unless-stopped
+    environment:
+      - DBHOST=db
+      - DBPORT=5432
+      - DBUSER=test_user
+      - DBPASSWORD=test_password
+    depends_on:
+      - mq
+    command: ["python3", "-m", "dramatiq", "updater"]
+
+  updater:
+    build: rss_service/
+    restart: on-failure
+    environment:
+      - DBHOST=db
+      - DBPORT=5432
+      - DBUSER=test_user
+      - DBPASSWORD=test_password
+    depends_on:
+      - dramatiq
+    command: ["python3", "/app/updater.py"]
+
+  rss:
+    build: rss_service/
+    restart: unless-stopped
+    environment:
+      - DBHOST=db
+      - DBPORT=5432
+      - DBUSER=test_user
+      - DBPASSWORD=test_password
+    ports:
+      - 8000:8000
+    depends_on:
+      - db
+      - updater
