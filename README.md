@@ -12,7 +12,7 @@ Now the service is available on http://localhost:8000
 
 ## Testing
 
-To run tests, run `bash test/test.sh` directory
+To run tests, run `bash test/test.sh` 
 
 ## Overview
 
