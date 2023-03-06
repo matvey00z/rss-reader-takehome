@@ -127,7 +127,6 @@ class DB:
                 last_read_item_id INTEGER DEFAULT 0,
                 FOREIGN KEY (user_id) REFERENCES Users (user_id),
                 FOREIGN KEY (feed_id) REFERENCES Feeds (feed_id),
-                FOREIGN KEY (last_read_item_id) REFERENCES FeedItems (item_id),
                 UNIQUE(user_id, feed_id)
             );
         """
@@ -168,24 +167,24 @@ class DB:
         cursor.execute("SELECT feed_id FROM feeds WHERE feed_url = %s", (url,))
         result = cursor.fetchone()
         if result:
-            return result[0]
+            return result[0], False
         cursor.execute(
             "INSERT INTO feeds (feed_url) VALUES(%s) RETURNING feed_id", (url,)
         )
-        return cursor.fetchone()[0]
+        return cursor.fetchone()[0], True
 
     def follow_feed(self, username: str, url: str):
         with self.conn() as conn:
             with conn.cursor() as cursor:
                 user_id = self.get_user_id(cursor, username)
-                feed_id = self.get_or_put_feed(cursor, url)
+                feed_id, feed_created = self.get_or_put_feed(cursor, url)
                 cursor.execute(
                     """INSERT INTO UserFeeds (user_id, feed_id) VALUES (%s, %s)
                     ON CONFLICT DO NOTHING
                     RETURNING user_feed_id""",
                     (user_id, feed_id),
                 )
-                return cursor.fetchone() is not None
+                return cursor.fetchone() is not None, feed_created
 
     def unfollow_feed(self, username: str, feed_url: str):
         """
@@ -252,7 +251,9 @@ class DB:
                 if etag is not None or modified is not None:
                     etag_query = "etag = %s" if etag is not None else ""
                     modified_query = "modified = %s" if etag is not None else ""
-                    values = (x for x in (etag, modified, feed_id) if x is not None)
+                    values = typle(
+                        (x for x in (etag, modified, feed_id) if x is not None)
+                    )
                     query = f"""UPDATE Feeds SET {etag_query} {modified_query} failed = false
                                 WHERE feed_id = %s"""
                     cursor.execute(query, values)
@@ -274,9 +275,8 @@ class DB:
                 user_id = self.get_user_id(cursor, username)
                 feed_id = self.get_feed_id(cursor, feed_url)
                 cursor.execute(
-                    """SELECT last_read_id FROM UserFeeds
-                                  WHERE user_id = %s AND feed_id = %s
-                                  ORDER BY published""",
+                    """SELECT last_read_item_id FROM UserFeeds
+                                  WHERE user_id = %s AND feed_id = %s""",
                     (user_id, feed_id),
                 )
                 last_read = cursor.fetchone()
@@ -290,13 +290,14 @@ class DB:
                 else:
                     last_read_query = ""
                     last_read = None
-                values = (x for x in (feed_id, last_read) if x is not None)
-                results = cursor.execute(
+                values = tuple((x for x in (feed_id, last_read) if x is not None))
+                cursor.execute(
                     f"""SELECT item_id, entry FROM FeedItems
-                    WHERE feed_id = %s {last_read_query}""",
+                    WHERE feed_id = %s {last_read_query}
+                    ORDER BY published""",
                     values,
-                ).fetchall()
-                return [{"id": res[0], "content": res[1]} for res in results]
+                )
+                return [{"id": res[0], "content": res[1]} for res in cursor.fetchall()]
 
     def get_all_items(self, username: str, unread_only: bool):
         with self.conn() as conn:
@@ -343,17 +344,3 @@ class DB:
                     return was_failed
                 except:
                     raise FeedNotFound(feed_url)
-
-    def create_feeds_table(self, cursor):
-        table = "Feeds"
-        cursor.execute(
-            f"""
-            CREATE TABLE IF NOT EXISTS {table} (
-                feed_id SERIAL PRIMARY KEY,
-                feed_url VARCHAR(255) UNIQUE,
-                etag VARCHAR(255),
-                modified VARCHAR(255),
-                failed BOOLEAN DEFAULT false
-            );
-        """
-        )

@@ -5,6 +5,7 @@ import dramatiq
 from dramatiq.brokers.rabbitmq import RabbitmqBroker
 import json
 import os
+import logging
 
 import db as db_handler
 
@@ -12,11 +13,11 @@ UPDATE_INTERVAL_SEC = 2
 MAX_FAIL_COUNT = 3
 
 dramatiq_broker = RabbitmqBroker(
-    parameters=[
-        dict(host="mq"),
-    ]
+    host="mq"
 )
 dramatiq.set_broker(dramatiq_broker)
+
+logging.basicConfig(level=logging.DEBUG)
 
 db = db_handler.DB(
     os.environ["DBHOST"],
@@ -37,6 +38,7 @@ def get_feed_updates(url, etag=None, modified=None):
         entries = []
     else:
         entries = feed.entries
+    logging.debug(f"Feed {url}: status {feed.status}, entries: {len(entries)}")
     return {
         "etag": feed.etag,
         "modified": feed.modified,
@@ -46,6 +48,7 @@ def get_feed_updates(url, etag=None, modified=None):
 
 @dramatiq.actor
 def update_feed(url, fail_count=0):
+    logging.debug(f"Updating feed for {url}")
     start_time = time.monotonic()
     if fail_count >= MAX_FAIL_COUNT:
         db.set_failed(url)

@@ -11,10 +11,10 @@ test_feeds = [
     "http://abcd.com/rss",
     "http://xyza.com/rss",
 ]
-# test_feeds = [
-#    'http://www.nu.nl/rss/Algemeen',
-#    'https://feeds.feedburner.com/tweakers/mixed',
-# ]
+real_feeds = [
+    "http://www.nu.nl/rss/Algemeen",
+    "https://feeds.feedburner.com/tweakers/mixed",
+]
 
 
 def assert_once(req):
@@ -88,12 +88,6 @@ def test_follow_unfollow(app):
 
 
 def test_list_feeds(app):
-    def get_feeds(username):
-        url = "/".join([HOST, "feeds"])
-        resp = requests.get(url, params={"username": username})
-        resp.raise_for_status()
-        return resp.json()["feeds"]
-
     user = test_users[0]
     assert get_feeds(user) == []
     for feed in test_feeds:
@@ -102,3 +96,34 @@ def test_list_feeds(app):
         params = {"username": user, "feed_url": feed}
         requests.post(follow_url, params=params)
     assert sorted(get_feeds(user)) == sorted(test_feeds)
+
+
+def test_real_feeds(app):
+    user = test_users[1]
+    assert get_feeds(user) == []
+    item_count = 0
+    for feed in real_feeds:
+        requests.post(
+            "/".join([HOST, "follow"]), params={"username": user, "feed_url": feed}
+        ).raise_for_status()
+        time.sleep(1)
+        resp = requests.get(
+            "/".join([HOST, "feed_items"]),
+            params={"username": user, "feed_url": feed},
+        )
+        resp.raise_for_status()
+        resp = resp.json()
+        assert len(resp["items"]) > 0
+        item_count += len(resp["items"])
+    assert sorted(get_feeds(user)) == sorted(test_feeds)
+    resp = requests.get("/".join([HOST, "all_items"]))
+    resp.raise_for_status()
+    resp = resp.json()
+    assert len(resp.items) == item_count
+
+
+def get_feeds(username):
+    url = "/".join([HOST, "feeds"])
+    resp = requests.get(url, params={"username": username})
+    resp.raise_for_status()
+    return resp.json()["feeds"]

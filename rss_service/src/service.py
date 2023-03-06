@@ -33,7 +33,8 @@ def add_user(username: str):
 def follow_feed(username: str, feed_url: str):
     """Follow a feed"""
     try:
-        new_follow = db.follow_feed(username, feed_url)
+        new_follow, new_feed = db.follow_feed(username, feed_url)
+        updater.update_feed.send(feed_url)
     except db_handler.UserNotFound as e:
         # User management is out of scope of this service so missing user is some kind
         # internal logic error or a race condition
@@ -67,7 +68,7 @@ async def list_feeds(username: str):
 
 
 @app.get("/feed_items")
-async def list_feed_items(username: str, feed_url: str, unread_only: bool):
+async def list_feed_items(username: str, feed_url: str, unread_only: bool = False):
     try:
         items = db.get_feed_items(username, feed_url, unread_only)
     except db_handler.UserNotFound:
@@ -78,7 +79,7 @@ async def list_feed_items(username: str, feed_url: str, unread_only: bool):
 
 
 @app.get("/all_items")
-async def list_all_items(username: str, unread_only: bool):
+async def list_all_items(username: str, unread_only: bool = False):
     try:
         items = db.get_all_items(username, unread_only)
     except db_handler.UserNotFound:
@@ -86,7 +87,7 @@ async def list_all_items(username: str, unread_only: bool):
     return {"items": items}
 
 
-@app.get("/mark_read")
+@app.post("/mark_read")
 async def mark_as_read(username: str, feed_url: str, item_id: int):
     try:
         db.mark_as_read(username, feed_url, item_id)
