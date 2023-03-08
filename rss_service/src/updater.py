@@ -100,4 +100,4 @@ def start_updating_feed(url):
 
 if __name__ == "__main__":
     for feed in db.list_all_feeds():
-        update_feed.send(feed)
+        start_updating_feed(feed)

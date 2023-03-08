@@ -93,7 +93,8 @@ class DB:
                 feed_id INTEGER,
                 published INTEGER,
                 entry VARCHAR({MAX_ENTRY_SIZE}),
-                FOREIGN KEY (feed_id) REFERENCES Feeds (feed_id)
+                FOREIGN KEY (feed_id) REFERENCES Feeds (feed_id),
+                UNIQUE(feed_id, published, entry)
             );
         """
         )
@@ -239,7 +240,8 @@ class DB:
         with self.conn() as conn:
             with conn.cursor() as cursor:
                 feed_id = self.get_feed_id(cursor, feed_url)
-                query = "INSERT INTO FeedItems (feed_id, published, entry) VALUES %s"
+                query = """INSERT INTO FeedItems (feed_id, published, entry) VALUES %s
+                ON CONFLICT DO NOTHING"""
                 execute_values(
                     cursor,
                     query,
@@ -249,8 +251,8 @@ class DB:
                     ],
                 )
                 if etag is not None or modified is not None:
-                    etag_query = "etag = %s" if etag is not None else ""
-                    modified_query = "modified = %s" if modified is not None else ""
+                    etag_query = "etag = %s , " if etag is not None else ""
+                    modified_query = "modified = %s , " if modified is not None else ""
                     values = tuple(
                         (x for x in (etag, modified, feed_id) if x is not None)
                     )
@@ -327,7 +329,7 @@ class DB:
                 cursor.execute(
                     """UPDATE UserFeeds SET last_read_item_id = %s
                     WHERE user_id = %s AND feed_id = %s""",
-                    (user_id, feed_id),
+                    (item_id, user_id, feed_id),
                 )
 
     def request_feed_update(self, feed_url: str):

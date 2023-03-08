@@ -7,3 +7,11 @@ services:
     volumes:
       - ./report/:/output/
     network_mode: host
+    depends_on:
+      - rssgen
+
+  rssgen:
+    build: https://github.com/mbertolacci/lorem-rss.git
+    restart: "no"
+    ports:
+      - 5000:5000

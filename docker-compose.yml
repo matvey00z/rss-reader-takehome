@@ -40,6 +40,8 @@ services:
       rss:
         condition: service_started
     command: ["python3", "-m", "dramatiq", "updater"]
+    extra_hosts:
+      - host.docker.internal:host-gateway # To see localhost, for testing
 
   updater:
     build: rss_service/

@@ -122,8 +122,48 @@ def test_real_feeds(app):
     assert len(resp["items"]) == item_count
 
 
+def test_updates(app):
+    user = test_users[2]
+    feed = "http://host.docker.internal:5000/feed?unit=second"
+    requests.post(
+        "/".join([HOST, "follow"]), params={"username": user, "feed_url": feed}
+    ).raise_for_status()
+    time.sleep(5)
+    total_items_value = get_items(user, feed, False)
+    total_items = len(total_items_value)
+    assert total_items > 0
+    mark_as_read(user, feed, total_items_value[-1]["id"])
+    for _ in range(5):
+        time.sleep(2)
+        current_items = len(get_items(user, feed, False))
+        unread_items_value = get_items(user, feed, True)
+        unread_items = len(unread_items_value)
+        assert unread_items > 0
+        assert unread_items < 4
+        assert current_items > total_items
+        assert total_items + unread_items <= current_items + 1
+        total_items = current_items
+        mark_as_read(user, feed, unread_items_value[-1]["id"])
+
+
 def get_feeds(username):
     url = "/".join([HOST, "feeds"])
     resp = requests.get(url, params={"username": username})
     resp.raise_for_status()
     return resp.json()["feeds"]
+
+
+def get_items(user, feed, unread_only):
+    resp = requests.get(
+        "/".join([HOST, "feed_items"]),
+        params={"username": user, "feed_url": feed, "unread_only": unread_only},
+    )
+    resp.raise_for_status()
+    return resp.json()["items"]
+
+
+def mark_as_read(user, feed, item_id):
+    requests.post(
+        "/".join([HOST, "mark_read"]),
+        params={"username": user, "feed_url": feed, "item_id": item_id},
+    ).raise_for_status()
