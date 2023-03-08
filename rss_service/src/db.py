@@ -250,7 +250,7 @@ class DB:
                 )
                 if etag is not None or modified is not None:
                     etag_query = "etag = %s" if etag is not None else ""
-                    modified_query = "modified = %s" if etag is not None else ""
+                    modified_query = "modified = %s" if modified is not None else ""
                     values = tuple(
                         (x for x in (etag, modified, feed_id) if x is not None)
                     )
