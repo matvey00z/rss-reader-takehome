@@ -1,0 +1,9 @@
+version: "3.8"
+
+services:
+  test:
+    build: .
+    restart: "no"
+    volumes:
+      - ./report/:/output/
+    network_mode: host

@@ -8,11 +8,11 @@ To run use docker-compose.yml, for example, run in the top directory:
 ```
 docker compose up
 ```
-Now the service is available on http://localhost:8000
+Now the service is available on http://localhost:8000.
 
 ## Testing
 
-To run tests, run `bash test/test.sh` 
+To run tests, go into `test/` directory and run `bash test.sh` . Test report will appear in test/report/report.html.
 
 ## Overview
 
