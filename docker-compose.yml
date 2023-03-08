@@ -5,17 +5,29 @@ services:
     container_name: postgres
     image: "postgres:latest"
     restart: unless-stopped
+    healthcheck:
+      test: pg_isready -U test_user -d rss_db
+      interval: 10s
+      timeout: 2s
+      retries: 10
     environment:
       - POSTGRES_DB=rss_db
       - POSTGRES_USER=test_user
       - POSTGRES_PASSWORD=test_password
+      - PGUSER=postgres
 
   mq:
     container_name: rabbitmq
     image: "rabbitmq:latest"
     restart: unless-stopped
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 10s
+      timeout: 2s
+      retries: 10
     ports:
       - 5672:5672
+      - 15672:15672
 
   dramatiq:
     build: rss_service/
@@ -26,7 +38,10 @@ services:
       - DBUSER=test_user
       - DBPASSWORD=test_password
     depends_on:
-      - mq
+      mq:
+        condition: service_healthy
+      rss:
+        condition: service_started
     command: ["python3", "-m", "dramatiq", "updater"]
 
   updater:
@@ -52,5 +67,7 @@ services:
     ports:
       - 8000:8000
     depends_on:
-      - db
-      - updater
+      db:
+        condition: service_healthy
+      mq:
+        condition: service_healthy

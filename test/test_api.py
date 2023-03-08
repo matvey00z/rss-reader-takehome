@@ -106,7 +106,7 @@ def test_real_feeds(app):
         requests.post(
             "/".join([HOST, "follow"]), params={"username": user, "feed_url": feed}
         ).raise_for_status()
-        time.sleep(1)
+        time.sleep(5)
         resp = requests.get(
             "/".join([HOST, "feed_items"]),
             params={"username": user, "feed_url": feed},
@@ -115,11 +115,11 @@ def test_real_feeds(app):
         resp = resp.json()
         assert len(resp["items"]) > 0
         item_count += len(resp["items"])
-    assert sorted(get_feeds(user)) == sorted(test_feeds)
-    resp = requests.get("/".join([HOST, "all_items"]))
+    assert sorted(get_feeds(user)) == sorted(real_feeds)
+    resp = requests.get("/".join([HOST, "all_items"]), params={"username": user})
     resp.raise_for_status()
     resp = resp.json()
-    assert len(resp.items) == item_count
+    assert len(resp["items"]) == item_count
 
 
 def get_feeds(username):

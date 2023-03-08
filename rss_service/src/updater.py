@@ -6,18 +6,20 @@ from dramatiq.brokers.rabbitmq import RabbitmqBroker
 import json
 import os
 import logging
+import sys
+import socket
 
 import db as db_handler
 
 UPDATE_INTERVAL_SEC = 2
 MAX_FAIL_COUNT = 3
 
+
 dramatiq_broker = RabbitmqBroker(
-    host="mq"
+    host=socket.gethostbyname("mq") # Workaround dramatiq somehow failing to resolve the hostname
 )
 dramatiq.set_broker(dramatiq_broker)
 
-logging.basicConfig(level=logging.DEBUG)
 
 db = db_handler.DB(
     os.environ["DBHOST"],
@@ -26,6 +28,7 @@ db = db_handler.DB(
     os.environ["DBPASSWORD"],
 )
 
+logging.basicConfig(level=logging.DEBUG)
 
 def get_feed_updates(url, etag=None, modified=None):
     headers = {}
@@ -40,30 +43,31 @@ def get_feed_updates(url, etag=None, modified=None):
         entries = feed.entries
     logging.debug(f"Feed {url}: status {feed.status}, entries: {len(entries)}")
     return {
-        "etag": feed.etag,
-        "modified": feed.modified,
+        "etag": feed.get("etag"),
+        "modified": feed.get("modified"),
         "entries": entries,
     }
 
 
 @dramatiq.actor
-def update_feed(url, fail_count=0):
-    logging.debug(f"Updating feed for {url}")
+def update_feed(url, fail_count):
+    logging.debug(f"Updating feed for {url}, fail count: {fail_count}")
     start_time = time.monotonic()
     if fail_count >= MAX_FAIL_COUNT:
         db.set_failed(url)
+        return
 
     try:
         last_updated = db.get_feed_last_updated(url)
         if last_updated is None:
-            # The feed does not exist in the table any more
+            logging.info(f"Feed is not followed any more: {url}")
             return
         updates = get_feed_updates(url, last_updated["etag"], last_updated["modified"])
         db.put_updates(
-            url,
-            updates["etag"],
-            updates["modified"],
-            [
+            feed_url=url,
+            etag=updates["etag"],
+            modified=updates["modified"],
+            entries=[
                 {
                     "published": int(time.mktime(update.published_parsed)),
                     "content": json.dumps(update),
@@ -71,17 +75,25 @@ def update_feed(url, fail_count=0):
                 for update in updates["entries"]
             ],
         )
+        logging.debug("Successfully stored updates in DB")
 
         fail_count = 0
-    except:
+    except Exception as e:
+        logging.error(f"Exception while trying to update feed {url}: {e}")
         fail_count += 1
 
     to_sleep = start_time + UPDATE_INTERVAL_SEC * (10**fail_count) - time.monotonic()
+    logging.debug(f'Sleep {to_sleep} sec before updating {url} next time')
     if to_sleep > 0:
         time.sleep(to_sleep)
+
     update_feed.send(url, fail_count)
 
 
-if __name__ == "__main__":
-    for feed in db.list_all_feeds():
-        update_feed.send(feed)
+def start_updating_feed(url):
+    logging.info(f"Starting feed updates for {url}")
+    update_feed.send(url, 0)
+
+#if __name__ == "__main__":
+    #for feed in db.list_all_feeds():
+    #    update_feed.send(feed)

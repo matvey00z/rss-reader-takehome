@@ -45,7 +45,7 @@ class ConnectionManager(object):
 
 
 class DB:
-    def __init__(self, host, port, user, password):
+    def __init__(self, host, port, user, password, create = False):
         self.pool = psycopg2.pool.SimpleConnectionPool(
             POOL_MIN_CONNECTIONS,
             POOL_MAX_CONNECTIONS,
@@ -55,12 +55,13 @@ class DB:
             user=user,
             password=password,
         )
-        with self.conn() as conn:
-            with conn.cursor() as cursor:
-                self.create_feeds_table(cursor)
-                self.create_feed_items_table(cursor)
-                self.create_users_table(cursor)
-                self.create_user_feeds_table(cursor)
+        if create:
+            with self.conn() as conn:
+                with conn.cursor() as cursor:
+                    self.create_feeds_table(cursor)
+                    self.create_feed_items_table(cursor)
+                    self.create_users_table(cursor)
+                    self.create_user_feeds_table(cursor)
 
     def conn(self):
         return ConnectionManager(self.pool)
@@ -217,10 +218,9 @@ class DB:
     def get_feed_last_updated(self, feed_url: str):
         with self.conn() as conn:
             with conn.cursor() as cursor:
-                feed_id = self.get_feed_id(cursor, feed_url)
                 cursor.execute(
-                    """SELECT etag, modified FROM Feeds WHERE feed_id = %s""",
-                    (feed_id,),
+                    """SELECT etag, modified FROM Feeds WHERE feed_url = %s""",
+                    (feed_url,),
                 )
                 result = cursor.fetchone()
                 if result is None:
@@ -230,9 +230,9 @@ class DB:
 
     def put_updates(
         self,
+        feed_url: str,
         etag: Optional[str],
         modified: Optional[str],
-        feed_url: str,
         entries: List[str],
     ):
         entries = sorted(entries, key=lambda entry: entry["published"])
@@ -308,7 +308,7 @@ class DB:
                 )
                 cursor.execute(
                     f"""
-                    SELECT items.entry
+                    SELECT items.item_id, items.entry
                     FROM UserFeeds feeds
                     JOIN FeedItems items ON feeds.feed_id = items.feed_id
                     WHERE feeds.user_id = %s
@@ -317,7 +317,7 @@ class DB:
                 """,
                     (user_id,),
                 )
-                return [{"id": res[0], "content": res[1]} for res in results]
+                return [{"id": res[0], "content": res[1]} for res in cursor.fetchall()]
 
     def mark_as_read(self, username: str, feed_url: str, item_id: int):
         with self.conn() as conn:

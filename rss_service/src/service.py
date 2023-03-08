@@ -10,6 +10,7 @@ db = db_handler.DB(
     os.environ["DBPORT"],
     os.environ["DBUSER"],
     os.environ["DBPASSWORD"],
+    create=True,
 )
 
 app = FastAPI()
@@ -34,7 +35,7 @@ def follow_feed(username: str, feed_url: str):
     """Follow a feed"""
     try:
         new_follow, new_feed = db.follow_feed(username, feed_url)
-        updater.update_feed.send(feed_url)
+        updater.start_updating_feed(feed_url)
     except db_handler.UserNotFound as e:
         # User management is out of scope of this service so missing user is some kind
         # internal logic error or a race condition
@@ -105,7 +106,7 @@ async def update_feed(feed_url: str):
     except db_handler.FeedNotFound:
         raise HTTPException(status_code=400, detail="Feed not found")
     if need_update:
-        updater.update_feed.send(feed_url)
+        updater.start_updating_feed(feed_url)
         return {"message": "Update requested"}
     return {"message": "Update not needed"}
 
