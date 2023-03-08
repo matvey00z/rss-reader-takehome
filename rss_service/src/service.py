@@ -18,11 +18,16 @@ app = FastAPI()
 
 @app.get("/healthcheck")
 def healthcheck():
+    """Check that the service is up and running"""
     return {"message": "ok"}
 
 
 @app.post("/add_user")
 def add_user(username: str):
+    """Add new user
+
+    Return codes: 200 on success, 400 when user already exists
+    """
     try:
         db.add_user(username)
     except db_handler.UserAlreadyExists:
@@ -32,7 +37,11 @@ def add_user(username: str):
 
 @app.post("/follow")
 def follow_feed(username: str, feed_url: str):
-    """Follow a feed"""
+    """Follow a feed
+    
+    Following the same feed more than once has no effect
+    Return code: 200 on success, 500 when user is not found
+    """
     try:
         new_follow, new_feed = db.follow_feed(username, feed_url)
         updater.start_updating_feed(feed_url)
@@ -48,7 +57,10 @@ def follow_feed(username: str, feed_url: str):
 
 @app.post("/unfollow")
 def unfollow_feed(username: str, feed_url: str):
-    """Unfollow a feed"""
+    """Unfollow a feed
+
+    Return code: 200 on success, 500 when user not found, 400 when feed not followed
+    """
     try:
         unfollowed = db.unfollow_feed(username, feed_url)
     except db_handler.UserNotFound:
@@ -60,7 +72,11 @@ def unfollow_feed(username: str, feed_url: str):
 
 @app.get("/feeds")
 async def list_feeds(username: str):
-    """List user's feeds"""
+    """List user's feeds
+    
+    Return code: 200 on success, 500 when user not found
+    Return content: {"feeds": [feed_url]}
+    """
     try:
         feeds = db.list_feeds(username)
     except db_handler.UserNotFound:
@@ -70,6 +86,12 @@ async def list_feeds(username: str):
 
 @app.get("/feed_items")
 async def list_feed_items(username: str, feed_url: str, unread_only: bool = False):
+    """List user's items filtered by feed, possibly unread only
+
+    Return code: 200 on success, 500 when user not found, 400 when feed not followed
+    Return content: {"items": [{"id": id, "content": content}], "failed": bool}.
+                    Item content is json encoded entry object from feedparser.
+    """
     try:
         items = db.get_feed_items(username, feed_url, unread_only)
     except db_handler.UserNotFound:
@@ -81,6 +103,12 @@ async def list_feed_items(username: str, feed_url: str, unread_only: bool = Fals
 
 @app.get("/all_items")
 async def list_all_items(username: str, unread_only: bool = False):
+    """List user's items from all feeds, possibly unread only
+
+    Return code: 200 on success, 500 when user not found
+    Return content: {"items": [{"id": id, "content": content}], "failed": [failed_feed_url]}.
+                    Item content is json encoded entry object from feedparser.
+    """
     try:
         items = db.get_all_items(username, unread_only)
     except db_handler.UserNotFound:
@@ -90,6 +118,10 @@ async def list_all_items(username: str, unread_only: bool = False):
 
 @app.post("/mark_read")
 async def mark_as_read(username: str, feed_url: str, item_id: int):
+    """Mark items up to @item_id as read
+
+    Return code: 200 on success, 500 when user not found, 400 when feed not found
+    """
     try:
         db.mark_as_read(username, feed_url, item_id)
     except db_handler.UserNotFound:
@@ -101,6 +133,11 @@ async def mark_as_read(username: str, feed_url: str, item_id: int):
 
 @app.post("/update_feed")
 async def update_feed(feed_url: str):
+    """Force update failed feed
+
+    Calling this method for a not failed feed has no effect
+    Return code: 200 on success, 400 when feed not found
+    """
     try:
         need_update = db.request_feed_update(feed_url)
     except db_handler.FeedNotFound:
