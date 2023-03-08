@@ -1,13 +1,13 @@
 #!/bin/sh
 
 cd ..
-sudo docker compose up --build --force-recreate -d
-sudo docker compose logs --follow > test/logs.txt &
+docker compose up --build --force-recreate -d
+docker compose logs --follow > test/logs.txt &
 
 cd -
-sudo docker compose up --build --force-recreate
+docker compose up --build --force-recreate
 
 cd ..
-sudo docker compose down
+docker compose down
 
 wait
