@@ -45,7 +45,7 @@ class ConnectionManager(object):
 
 
 class DB:
-    def __init__(self, host, port, user, password, create = False):
+    def __init__(self, host, port, user, password, create=False):
         self.pool = psycopg2.pool.SimpleConnectionPool(
             POOL_MIN_CONNECTIONS,
             POOL_MAX_CONNECTIONS,

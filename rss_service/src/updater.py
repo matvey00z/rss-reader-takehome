@@ -16,7 +16,9 @@ MAX_FAIL_COUNT = 3
 
 
 dramatiq_broker = RabbitmqBroker(
-    host=socket.gethostbyname("mq") # Workaround dramatiq somehow failing to resolve the hostname
+    host=socket.gethostbyname(
+        "mq"
+    )  # Workaround dramatiq somehow failing to resolve the hostname
 )
 dramatiq.set_broker(dramatiq_broker)
 
@@ -29,6 +31,7 @@ db = db_handler.DB(
 )
 
 logging.basicConfig(level=logging.DEBUG)
+
 
 def get_feed_updates(url, etag=None, modified=None):
     headers = {}
@@ -83,7 +86,7 @@ def update_feed(url, fail_count):
         fail_count += 1
 
     to_sleep = start_time + UPDATE_INTERVAL_SEC * (10**fail_count) - time.monotonic()
-    logging.debug(f'Sleep {to_sleep} sec before updating {url} next time')
+    logging.debug(f"Sleep {to_sleep} sec before updating {url} next time")
     if to_sleep > 0:
         time.sleep(to_sleep)
 
@@ -94,6 +97,7 @@ def start_updating_feed(url):
     logging.info(f"Starting feed updates for {url}")
     update_feed.send(url, 0)
 
-#if __name__ == "__main__":
-    #for feed in db.list_all_feeds():
-    #    update_feed.send(feed)
+
+if __name__ == "__main__":
+    for feed in db.list_all_feeds():
+        update_feed.send(feed)
