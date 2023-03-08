@@ -299,7 +299,12 @@ class DB:
                     ORDER BY published""",
                     values,
                 )
-                return [{"id": res[0], "content": res[1]} for res in cursor.fetchall()]
+                items = [{"id": res[0], "content": res[1]} for res in cursor.fetchall()]
+                cursor.execute(
+                    "SELECT failed FROM Feeds WHERE feed_id = %s", (feed_id,)
+                )
+                failed = cursor.fetchone()[0]
+                return {"items": items, "failed": failed}
 
     def get_all_items(self, username: str, unread_only: bool):
         with self.conn() as conn:
@@ -319,7 +324,17 @@ class DB:
                 """,
                     (user_id,),
                 )
-                return [{"id": res[0], "content": res[1]} for res in cursor.fetchall()]
+                items = [{"id": res[0], "content": res[1]} for res in cursor.fetchall()]
+                cursor.execute(
+                    """
+                    SELECT Feeds.feed_url
+                    FROM Feeds
+                    JOIN UserFeeds ON Feeds.feed_id = UserFeeds.feed_id
+                    WHERE UserFeeds.user_id = %s AND Feeds.failed = true""",
+                    (user_id,),
+                )
+                failed_ids = [res[0] for res in cursor.fetchall()]
+                return {"items": items, "failed": failed_ids}
 
     def mark_as_read(self, username: str, feed_url: str, item_id: int):
         with self.conn() as conn:
@@ -335,14 +350,12 @@ class DB:
     def request_feed_update(self, feed_url: str):
         with self.conn() as conn:
             with conn.cursor() as cursor:
-                res = cursor.execute(
+                feed_id = self.get_feed_id(cursor, feed_url)
+                cursor.execute(
                     """UPDATE Feeds SET failed = false
-                    WHERE feed_url = %s
+                    WHERE feed_id = %s AND failed = true
                     RETURNING failed""",
-                    (feed_url,),
+                    (feed_id,),
                 )
-                try:
-                    was_failed = res.fetchone()[0]
-                    return was_failed
-                except:
-                    raise FeedNotFound(feed_url)
+                was_failed = cursor.fetchone() is not None
+                return was_failed

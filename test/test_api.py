@@ -2,6 +2,8 @@ import pytest
 import requests
 from requests.exceptions import ConnectionError
 import time
+import http.server
+import threading
 
 HOST = "http://localhost:8000"
 START_TIMEOUT_SEC = 3
@@ -91,10 +93,7 @@ def test_list_feeds(app):
     user = test_users[0]
     assert get_feeds(user) == []
     for feed in test_feeds:
-        follow_url = "/".join([HOST, "follow"])
-        feed_url = feed
-        params = {"username": user, "feed_url": feed}
-        requests.post(follow_url, params=params)
+        follow(user, feed)
     assert sorted(get_feeds(user)) == sorted(test_feeds)
 
 
@@ -103,9 +102,7 @@ def test_real_feeds(app):
     assert get_feeds(user) == []
     item_count = 0
     for feed in real_feeds:
-        requests.post(
-            "/".join([HOST, "follow"]), params={"username": user, "feed_url": feed}
-        ).raise_for_status()
+        follow(user, feed)
         time.sleep(5)
         resp = requests.get(
             "/".join([HOST, "feed_items"]),
@@ -125,9 +122,7 @@ def test_real_feeds(app):
 def test_updates(app):
     user = test_users[2]
     feed = "http://host.docker.internal:5000/feed?unit=second"
-    requests.post(
-        "/".join([HOST, "follow"]), params={"username": user, "feed_url": feed}
-    ).raise_for_status()
+    follow(user, feed)
     time.sleep(5)
     total_items_value = get_items(user, feed, False)
     total_items = len(total_items_value)
@@ -146,6 +141,65 @@ def test_updates(app):
         mark_as_read(user, feed, unread_items_value[-1]["id"])
 
 
+def test_linkdown(app):
+    class ProxyServer:
+        class ProxyHandler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                # Can use rssgen instead of localhost here but it fail if run outside of docker compose
+                url = "http://localhost:5000/feed?unit=second"
+                resp = requests.get(url, headers=dict(self.headers))
+                self.send_response(resp.status_code)
+                for header in resp.headers.items():
+                    self.send_header(*header)
+                self.end_headers()
+                self.wfile.write(resp.content)
+
+        def __init__(self):
+            self.server = http.server.HTTPServer(("", 5001), ProxyServer.ProxyHandler)
+
+        def __enter__(self):
+            self.thread = threading.Thread(target=self.server.serve_forever)
+            self.thread.start()
+
+        def __exit__(self, *args):
+            self.server.shutdown()
+            self.thread.join()
+
+    user = test_users[3]
+    feed = "http://host.docker.internal:5001"
+
+    def check_updates(expect_fail, expect_items, read):
+        update = get_updates(user, feed, True)
+        assert update.get("failed", False) == expect_fail
+        has_items = len(update["items"]) > 0
+        assert has_items == expect_items
+        if read:
+            mark_as_read(user, feed, update["items"][-1]["id"])
+
+    # 1. Get new items while proxy is on
+    # 2. Get into failed state and no new items when proxy is off
+    # 3. Stay in failed state and no new items when proxy is back on
+    # 4. Get out of failed state and get new items after force update
+    with ProxyServer():
+        follow(user, feed)
+        assert get_feeds(user) == [feed]
+        time.sleep(3)
+        check_updates(expect_fail=False, expect_items=True, read=False)
+    time.sleep(5)
+    check_updates(expect_fail=True, expect_items=True, read=True)
+    check_updates(expect_fail=True, expect_items=False, read=False)
+    with ProxyServer():
+        time.sleep(5)
+        check_updates(expect_fail=True, expect_items=False, read=False)
+        resp = requests.post("/".join([HOST, "update_feed"]), params={"feed_url": feed})
+        resp.raise_for_status()
+        assert resp.json()["message"] == "Update requested"
+        time.sleep(3)
+        check_updates(expect_fail=False, expect_items=True, read=True)
+        time.sleep(3)
+        check_updates(expect_fail=False, expect_items=True, read=True)
+
+
 def get_feeds(username):
     url = "/".join([HOST, "feeds"])
     resp = requests.get(url, params={"username": username})
@@ -153,17 +207,27 @@ def get_feeds(username):
     return resp.json()["feeds"]
 
 
-def get_items(user, feed, unread_only):
+def get_updates(user, feed, unread_only):
     resp = requests.get(
         "/".join([HOST, "feed_items"]),
         params={"username": user, "feed_url": feed, "unread_only": unread_only},
     )
     resp.raise_for_status()
-    return resp.json()["items"]
+    return resp.json()
+
+
+def get_items(user, feed, unread_only):
+    return get_updates(user, feed, unread_only)["items"]
 
 
 def mark_as_read(user, feed, item_id):
     requests.post(
         "/".join([HOST, "mark_read"]),
         params={"username": user, "feed_url": feed, "item_id": item_id},
+    ).raise_for_status()
+
+
+def follow(user, feed):
+    requests.post(
+        "/".join([HOST, "follow"]), params={"username": user, "feed_url": feed}
     ).raise_for_status()

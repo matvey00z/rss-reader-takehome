@@ -11,7 +11,8 @@ import socket
 
 import db as db_handler
 
-UPDATE_INTERVAL_SEC = 2
+UPDATE_INTERVAL_SEC = 1
+UPDATE_INTERVAL_INCREASE = 1
 MAX_FAIL_COUNT = 3
 
 
@@ -85,7 +86,11 @@ def update_feed(url, fail_count):
         logging.error(f"Exception while trying to update feed {url}: {e}")
         fail_count += 1
 
-    to_sleep = start_time + UPDATE_INTERVAL_SEC * (10**fail_count) - time.monotonic()
+    to_sleep = (
+        start_time
+        + UPDATE_INTERVAL_SEC * (UPDATE_INTERVAL_INCREASE**fail_count)
+        - time.monotonic()
+    )
     logging.debug(f"Sleep {to_sleep} sec before updating {url} next time")
     if to_sleep > 0:
         time.sleep(to_sleep)

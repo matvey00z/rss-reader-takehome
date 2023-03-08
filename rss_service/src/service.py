@@ -76,7 +76,7 @@ async def list_feed_items(username: str, feed_url: str, unread_only: bool = Fals
         raise HTTPException(status_code=500, detail="User not found")
     except db_handler.FeedNotFound:
         raise HTTPException(status_code=400, detail="Feed not found")
-    return {"items": items}
+    return {"items": items["items"], "failed": items.get("failed")}
 
 
 @app.get("/all_items")
@@ -85,7 +85,7 @@ async def list_all_items(username: str, unread_only: bool = False):
         items = db.get_all_items(username, unread_only)
     except db_handler.UserNotFound:
         raise HTTPException(status_code=500, detail="User not found")
-    return {"items": items}
+    return {"items": items["items"], "failed": items.get("failed")}
 
 
 @app.post("/mark_read")
